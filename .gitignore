@@ -1,3 +1,11 @@
+*.DS_Store
+.idea
+.vs_code
+*.pt
+
+# ignored files
+version.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
