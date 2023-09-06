@@ -196,7 +196,7 @@ class CLIPUNetModel(SRModel):
             if not hasattr(self, 'metric_results'):  # only execute in the first run
                 self.metric_results = {metric: 0 for metric in self.opt['val']['metrics'].keys()}
             if not hasattr(self, 'val_losses'):
-                self.val_losses = {name: build_loss(opt['build_args']) 
+                self.val_losses = {name: build_loss(opt['build_args']).eval() 
                                    for name, opt in self.opt['val']['metrics'].items()
                                    if 'loss' in name}
             # initialize the best metric results for each dataset_name (supporting multiple validation datasets)
