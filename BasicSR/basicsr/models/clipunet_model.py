@@ -178,5 +178,10 @@ class CLIPUNetModel(SRModel):
     def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
         # do not use the synthetic process during validation
         self.is_train = False
+        # idx = np.random.choice(len(dataloader))
+        # for index, val_data in enumerate(dataloader):
+        #     if index == idx:
+        #         dataloader = 
+        #         break
         super(CLIPUNetModel, self).nondist_validation(dataloader, current_iter, tb_logger, save_img)
         self.is_train = True

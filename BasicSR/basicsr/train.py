@@ -12,7 +12,7 @@ from basicsr.models import build_model
 from basicsr.utils import (AvgTimer, MessageLogger, check_resume, get_env_info, get_root_logger, get_time_str,
                            init_tb_logger, init_wandb_logger, make_exp_dirs, mkdir_and_rename, scandir)
 from basicsr.utils.options import copy_opt_file, dict2str, parse_options
-
+from basicsr.utils import imwrite, tensor2img
 
 def init_tb_loggers(opt):
     # initialize wandb logger before tensorboard logger to allow proper sync
@@ -209,7 +209,35 @@ def train_pipeline(root_path):
     if tb_logger:
         tb_logger.close()
 
+def generate_lq(root_path):
+    opt, args = parse_options(root_path, is_train=True)
+    opt['root_path'] = root_path
+    dataset_opt = opt['datasets']['val']
+    model = build_model(opt)
+    
+    val_set = build_dataset(dataset_opt)
+    val_loader = build_dataloader(
+        val_set, dataset_opt, num_gpu=opt['num_gpu'], dist=opt['dist'], sampler=None, seed=opt['manual_seed'])
+    print(f'Number of val images/folders in {dataset_opt["name"]}: {len(val_set)}')
+    for val_data in val_loader:
+        img_path, ext = osp.splitext(val_data['gt_path'][0])
+        path_list = img_path.split('/')
+        img_name = path_list.pop(-1)
+        model.feed_data(val_data)
+        lq = model.lq.detach().cpu()
+        gt = model.gt.detach().cpu()
+        lq_img = tensor2img([lq])
+        gt_img = tensor2img([gt])
+        save_lq_path = osp.join('/'.join(path_list[:-1]), 'val_lq',
+                                f'{img_name}_processed{ext}')
+        save_gt_path = osp.join('/'.join(path_list[:-1]), 'val_gt',
+                                f'{img_name}_processed{ext}')
+
+        imwrite(lq_img, save_lq_path)
+        imwrite(gt_img, save_gt_path)
+
 
 if __name__ == '__main__':
     root_path = osp.abspath(osp.join(__file__, osp.pardir, osp.pardir))
     train_pipeline(root_path)
+    # generate_lq(root_path)

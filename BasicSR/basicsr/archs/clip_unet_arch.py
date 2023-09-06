@@ -23,7 +23,7 @@ class CLIPUNetGenerator(nn.Module):
     def __init__(self, num_out_ch=3, scale=4) -> None:
         super().__init__()
         self.scale = scale
-        clip_path = '/Users/x/Desktop/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
+        clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
         # print(clip_path)
         with open(clip_path, 'rb') as opened_file:
             model = torch.jit.load(opened_file, map_location="cpu").eval()
@@ -79,12 +79,15 @@ class CLIPUNetGenerator(nn.Module):
         x5 = self.up_layers[0](x4)
         x5 = self.fuse_convs[0](torch.cat((x3, x5), dim=1))
         x5 = self.lrelu(self.bn[0](x5))
+
         x6 = self.up_layers[1](x5)
         x6 = self.fuse_convs[1](torch.cat((x2, x6), dim=1))
         x6 = self.lrelu(self.bn[1](x6))
+
         x7 = self.up_layers[2](x6)
         x7 = self.fuse_convs[2](torch.cat((x1, x7), dim=1))
         x7 = self.lrelu(self.bn[2](x7))
+        
         x8 = self.up_layers[3](x7)
         x8 = self.fuse_convs[3](torch.cat((x0, x8), dim=1))
         x8 = self.lrelu(self.bn[3](x8))

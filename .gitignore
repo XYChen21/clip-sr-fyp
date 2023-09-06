@@ -1,7 +1,10 @@
 *.DS_Store
 .idea
-.vs_code
+.vs_code/
 *.pt
+*.png
+experiments/
+tb_logger/
 
 # ignored files
 version.py
