@@ -189,10 +189,6 @@ class SRModel(BaseModel):
         if with_metrics:
             if not hasattr(self, 'metric_results'):  # only execute in the first run
                 self.metric_results = {metric: 0 for metric in self.opt['val']['metrics'].keys()}
-            if not hasattr(self, 'val_losses'):
-                self.val_losses = {name: build_loss(opt['build_args']) 
-                                   for name, opt in self.opt['val']['metrics'].items()
-                                   if 'loss' in name}
             # initialize the best metric results for each dataset_name (supporting multiple validation datasets)
             self._initialize_best_metric_results(dataset_name)
         # zero self.metric_results
@@ -214,6 +210,12 @@ class SRModel(BaseModel):
             if 'gt' in visuals:
                 gt_img = tensor2img([visuals['gt']])
                 metric_data['img2'] = gt_img
+                del self.gt
+
+            # tentative for out of GPU memory
+            del self.lq
+            del self.output
+            torch.cuda.empty_cache()
 
             if save_img:
                 if self.opt['is_train']:
@@ -231,21 +233,7 @@ class SRModel(BaseModel):
             if with_metrics:
                 # calculate metrics
                 for name, opt_ in self.opt['val']['metrics'].items():
-                    if 'loss' not in name:
-                        self.metric_results[name] += calculate_metric(metric_data, opt_)
-                    else:
-                        if name == 'perceptual_loss':
-                            self.metric_results[name] += self.val_losses[name](self.output, self.gt)[0] # style_loss is None
-                        else:
-                            self.metric_results[name] += self.val_losses[name](self.output, self.gt)
-
-            if 'gt' in visuals:
-                del self.gt
-            # tentative for out of GPU memory
-            del self.lq
-            del self.output
-            torch.cuda.empty_cache() # clustering , classf, cv nlp
-
+                    self.metric_results[name] += calculate_metric(metric_data, opt_)
             if use_pbar:
                 pbar.update(1)
                 pbar.set_description(f'Test {img_name}')
