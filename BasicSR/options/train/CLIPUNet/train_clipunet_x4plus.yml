@@ -127,30 +127,9 @@ val:
       crop_border: 4
       test_y_channel: false
 
-    perceptual_loss:
+    percep_loss:
+      type: calculate_percep_loss
       better: lower
-      build_args:
-        type: PerceptualLoss
-        layer_weights:
-          # before relu
-          'conv1_2': 0.1
-          'conv2_2': 0.1
-          'conv3_4': 1
-          'conv4_4': 1
-          'conv5_4': 1
-        vgg_type: vgg19
-        use_input_norm: true
-        perceptual_weight: !!float 1.0
-        style_weight: 0
-        range_norm: false
-        criterion: l1
-    
-    l1_loss:
-      better: lower
-      build_args:
-        type: L1Loss
-        loss_weight: 1.0
-        reduction: mean
 
 
 # logging settings

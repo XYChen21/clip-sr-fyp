@@ -14,6 +14,7 @@ from basicsr.models.sr_model import SRModel
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
+import lpips
 
 
 @MODEL_REGISTRY.register(suffix='basicsr')
@@ -183,11 +184,6 @@ class CLIPUNetModel(SRModel):
     def nondist_validation(self, dataloader, current_iter, tb_logger, save_img):
         # do not use the synthetic process during validation
         self.is_train = False
-        # idx = np.random.choice(len(dataloader))
-        # for index, val_data in enumerate(dataloader):
-        #     if index == idx:
-        #         dataloader = 
-        #         break
         dataset_name = dataloader.dataset.opt['name']
         with_metrics = self.opt['val'].get('metrics') is not None
         use_pbar = self.opt['val'].get('pbar', False)
@@ -195,17 +191,15 @@ class CLIPUNetModel(SRModel):
         if with_metrics:
             if not hasattr(self, 'metric_results'):  # only execute in the first run
                 self.metric_results = {metric: 0 for metric in self.opt['val']['metrics'].keys()}
-            if not hasattr(self, 'val_losses'):
-                self.val_losses = {name: build_loss(opt['build_args']) 
-                                   for name, opt in self.opt['val']['metrics'].items()
-                                   if 'loss' in name}
+            if 'percep_loss' in self.metric_results and not hasattr(self, 'percep_loss_fn'):
+                self.percep_loss_fn = lpips.LPIPS(net='alex')
             # initialize the best metric results for each dataset_name (supporting multiple validation datasets)
             self._initialize_best_metric_results(dataset_name)
         # zero self.metric_results
         if with_metrics:
             self.metric_results = {metric: 0 for metric in self.metric_results}
 
-        metric_data = dict()
+        metric_data = {'percep_loss_fn': self.percep_loss_fn}
         if use_pbar:
             pbar = tqdm(total=len(dataloader), unit='image')
 
@@ -215,11 +209,29 @@ class CLIPUNetModel(SRModel):
             self.test()
 
             visuals = self.get_current_visuals()
-            sr_img = tensor2img([visuals['result']])
+            img = visuals['result']
+            # clamp and normalize to 0,1
+            min_max = (0,1)
+            img = img.squeeze(0).float().detach().cpu().clamp_(*min_max)
+            img = (img - min_max[0]) / (min_max[1] - min_max[0])
+
+            sr_img = tensor2img([img])
             metric_data['img'] = sr_img
+            metric_data['img_tensor'] = img
             if 'gt' in visuals:
-                gt_img = tensor2img([visuals['gt']])
+                img2 = visuals['gt']
+                min_max = (0,1)
+                img2 = img2.squeeze(0).float().detach().cpu().clamp_(*min_max)
+                img2 = (img2 - min_max[0]) / (min_max[1] - min_max[0])
+                gt_img = tensor2img([img2])
                 metric_data['img2'] = gt_img
+                metric_data['img2_tensor'] = img2
+
+                del self.gt
+            # tentative for out of GPU memory
+            del self.lq
+            del self.output
+            torch.cuda.empty_cache()
 
             if save_img:
                 if self.opt['is_train']:
@@ -237,20 +249,7 @@ class CLIPUNetModel(SRModel):
             if with_metrics:
                 # calculate metrics
                 for name, opt_ in self.opt['val']['metrics'].items():
-                    if 'loss' not in name:
-                        self.metric_results[name] += calculate_metric(metric_data, opt_)
-                    else:
-                        if name == 'perceptual_loss':
-                            self.metric_results[name] += self.val_losses[name](self.output, self.gt)[0] # style_loss is None
-                        else:
-                            self.metric_results[name] += self.val_losses[name](self.output, self.gt)
-
-            if 'gt' in visuals:
-                del self.gt
-            # tentative for out of GPU memory
-            del self.lq
-            del self.output
-            torch.cuda.empty_cache()
+                    self.metric_results[name] += calculate_metric(metric_data, opt_)
 
             if use_pbar:
                 pbar.update(1)
