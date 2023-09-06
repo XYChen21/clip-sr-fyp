@@ -250,7 +250,7 @@ class CLIPUNetModel(SRModel):
             # tentative for out of GPU memory
             del self.lq
             del self.output
-            torch.cuda.empty_cache() # clustering , classf, cv nlp
+            torch.cuda.empty_cache()
 
             if use_pbar:
                 pbar.update(1)
