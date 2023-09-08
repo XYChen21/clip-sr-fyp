@@ -1,36 +1,31 @@
-from collections import OrderedDict
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torchvision.transforms import Compose, Normalize
 from basicsr.archs.clip_arch import build_model
 from basicsr.utils.registry import ARCH_REGISTRY
 from basicsr.utils.upsample import TransposedConvUp
-
-
-#TODO:CLIP preprocess
-# def _transform(n_px): n_px = model.visual.input_resolution = 224
-#     return Compose([
-#         Resize(n_px, interpolation=BICUBIC),
-#         CenterCrop(n_px),
-#         _convert_image_to_rgb,
-#         ToTensor(),
-#         Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-#     ])
 
 @ARCH_REGISTRY.register()
 class CLIPUNetGenerator(nn.Module):
     def __init__(self, num_out_ch=3, scale=4) -> None:
         super().__init__()
         self.scale = scale
-        clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
-        # print(clip_path)
+        # clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
+        clip_path = '/home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
         with open(clip_path, 'rb') as opened_file:
             model = torch.jit.load(opened_file, map_location="cpu").eval()
             clip = build_model(model.state_dict()).visual ## we only need visual part?
         # if device == "cpu":
-        clip.float()
-        clip.requires_grad_(False)  ## build_model already return model.eval()?
+        # clip.float()
+        self.clip_transform = Compose([
+            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ])
+        self.inv_clip_transform = Compose([
+            Normalize(mean = (0., 0., 0.), std = (1/0.26862954, 1/0.26130258, 1/0.27577711)),
+            Normalize(mean = (-0.48145466, -0.4578275, -0.40821073), std = (1., 1., 1.)),
+        ])
+        clip.requires_grad_(False) 
         self.channels = {'down2': 64}
         for i in range(2,6):
             factor = 2**i
@@ -70,6 +65,8 @@ class CLIPUNetGenerator(nn.Module):
 
     def forward(self, lq):
         lq = F.interpolate(lq, scale_factor=self.scale, mode='bicubic')
+        # normalize
+        lq = self.clip_transform(lq)
         x0 = self.clip_feature[0](lq)
         x1 = self.clip_feature[1](x0)
         x2 = self.clip_feature[2](x1)
@@ -97,4 +94,6 @@ class CLIPUNetGenerator(nn.Module):
             out = self.conv_last(self.lrelu(self.conv_hr(x9)))
         else: # if scale==2, from 56->112
             out = self.conv_last(self.lrelu(self.conv_hr(x8)))
+        # inverse normalize
+        out = self.inv_clip_transform(out)
         return out

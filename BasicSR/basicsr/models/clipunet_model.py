@@ -220,6 +220,7 @@ class CLIPUNetModel(SRModel):
             metric_data['img_tensor'] = img
             if 'gt' in visuals:
                 img2 = visuals['gt']
+                # clamp and normalize to 0,1
                 min_max = (0,1)
                 img2 = img2.squeeze(0).float().detach().cpu().clamp_(*min_max)
                 img2 = (img2 - min_max[0]) / (min_max[1] - min_max[0])

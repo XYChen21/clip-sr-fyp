@@ -44,8 +44,8 @@ def main():
     opt['compression_level'] = 3
 
     # HR images
-    opt['input_folder'] = 'datasets/DIV2K/DIV2K_train_HR'
-    opt['save_folder'] = 'datasets/DIV2K/DIV2K_train_HR_sub'
+    opt['input_folder'] = 'datasets/DF2K/DF2K_train_HR'
+    opt['save_folder'] = 'datasets/DF2K/DF2K_train_HR_sub'
     opt['crop_size'] = 480
     opt['step'] = 240
     opt['thresh_size'] = 0
