@@ -11,13 +11,13 @@ class CLIPUNetGenerator(nn.Module):
     def __init__(self, num_out_ch=3, scale=4) -> None:
         super().__init__()
         self.scale = scale
-        # clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
-        clip_path = '/home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
+        clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
+        # clip_path = '/home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
         with open(clip_path, 'rb') as opened_file:
             model = torch.jit.load(opened_file, map_location="cpu").eval()
             clip = build_model(model.state_dict()).visual ## we only need visual part?
         # if device == "cpu":
-        # clip.float()
+        clip.float()
         self.clip_transform = Compose([
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])

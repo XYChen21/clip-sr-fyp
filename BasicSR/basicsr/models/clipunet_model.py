@@ -209,22 +209,22 @@ class CLIPUNetModel(SRModel):
             self.test()
 
             visuals = self.get_current_visuals()
-            img = visuals['result']
+            image = visuals['result']
             # clamp and normalize to 0,1
             min_max = (0,1)
-            img = img.squeeze(0).float().detach().cpu().clamp_(*min_max)
+            img = image.squeeze(0).float().detach().cpu().clamp_(*min_max)
             img = (img - min_max[0]) / (min_max[1] - min_max[0])
 
-            sr_img = tensor2img([img])
+            sr_img = tensor2img([image])
             metric_data['img'] = sr_img
             metric_data['img_tensor'] = img
             if 'gt' in visuals:
-                img2 = visuals['gt']
+                image2 = visuals['gt']
                 # clamp and normalize to 0,1
                 min_max = (0,1)
-                img2 = img2.squeeze(0).float().detach().cpu().clamp_(*min_max)
+                img2 = image2.squeeze(0).float().detach().cpu().clamp_(*min_max)
                 img2 = (img2 - min_max[0]) / (min_max[1] - min_max[0])
-                gt_img = tensor2img([img2])
+                gt_img = tensor2img([image2])
                 metric_data['img2'] = gt_img
                 metric_data['img2_tensor'] = img2
 
