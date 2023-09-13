@@ -8,8 +8,8 @@ def generate_meta_info_div2k():
     """Generate meta info for DIV2K dataset.
     """
 
-    gt_folder = 'datasets/DF2K/DIV2K_train_HR_sub/'
-    meta_info_txt = 'basicsr/data/meta_info/meta_info_DF2K3450sub_GT.txt'
+    gt_folder = 'datasets/DF2K/test/'
+    meta_info_txt = 'basicsr/data/meta_info/test.txt'
 
     img_list = sorted(list(scandir(gt_folder)))
 

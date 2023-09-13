@@ -93,6 +93,12 @@ class SRModel(BaseModel):
         self.optimizer_g.zero_grad()
         self.output = self.net_g(self.lq)
 
+        if current_iter%10 == 0:
+            out_img = self.output.detach().cpu()
+            out_img = tensor2img([out_img])
+            imwrite(out_img, '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/datasets/sanity_check/'+str(current_iter)+'.png')
+
+
         l_total = 0
         loss_dict = OrderedDict()
         # pixel loss
