@@ -6,7 +6,54 @@ from basicsr.archs.clip_arch import build_model
 from basicsr.utils.registry import ARCH_REGISTRY
 from basicsr.utils.upsample import TransposedConvUp
 
-@ARCH_REGISTRY.register()
+class ResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super(ResidualBlock, self).__init__()
+
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.relu = nn.ReLU(inplace=True)
+        
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        
+        if in_channels != out_channels:
+            self.skip = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, 1, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+        else:
+            self.skip = nn.Identity()
+    
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        out = self.conv2(out)
+        out = self.bn2(out)
+        
+        out += self.skip(x)
+        out = self.relu(out)
+        
+        return out
+
+# def make_layer(block, num, **build_opt):
+#     layers = []
+#     for _ in range(num):
+#         layers.append(block(**build_opt))
+#     return nn.Sequential(*layers)
+
+def calculate_parameters(net):
+    out = 0
+    for name, param in net.named_parameters():
+        if 'clip_feature' in name:
+            continue
+        print(name, param.numel())
+        out += param.numel()
+    return out
+
+# @ARCH_REGISTRY.register(suffix='basicsr')
 class CLIPUNetGenerator(nn.Module):
     def __init__(self, num_out_ch=3, scale=4) -> None:
         super().__init__()
@@ -51,7 +98,13 @@ class CLIPUNetGenerator(nn.Module):
             in_chan = self.channels['down'+str(factor)]
             out_chan = self.channels['down'+str(factor//2)]
             self.up_layers.append(TransposedConvUp(in_chan, out_chan, factor=2))
-            self.fuse_convs.append(nn.Conv2d(out_chan*2, out_chan, 3, 1, 1))
+            self.fuse_convs.append(
+                nn.Sequential(
+                    ResidualBlock(out_chan*2, out_chan*2),
+                    ResidualBlock(out_chan*2, out_chan)
+                )
+            )
+            # self.fuse_convs.append(nn.Conv2d(out_chan*2, out_chan, 3, 1, 1))
             self.bn.append(nn.BatchNorm2d(out_chan))
         # upsample (from 224//2=112 to 224)
         # out_chan=64
@@ -65,7 +118,7 @@ class CLIPUNetGenerator(nn.Module):
 
     def forward(self, lq):
         lq = F.interpolate(lq, scale_factor=self.scale, mode='bicubic')
-        # normalize
+        #TODO: normalize
         lq = self.clip_transform(lq)
         x0 = self.clip_feature[0](lq)
         x1 = self.clip_feature[1](x0)
@@ -94,6 +147,10 @@ class CLIPUNetGenerator(nn.Module):
             out = self.conv_last(self.lrelu(self.conv_hr(x9)))
         else: # if scale==2, from 56->112
             out = self.conv_last(self.lrelu(self.conv_hr(x8)))
-        # inverse normalize
+        #TODO: inverse normalize
         out = self.inv_clip_transform(out)
         return out
+    
+# if __name__ == '__main__':
+#     test = CLIPUNetGenerator()
+#     print(calculate_parameters(test))
