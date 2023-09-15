@@ -12,7 +12,7 @@ class ResidualBlock(nn.Module):
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, 3, 1, 1)
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU()
         
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3, 1, 1)
         self.bn2 = nn.BatchNorm2d(out_channels)
@@ -120,7 +120,7 @@ class CLIPUNetGenerator(nn.Module):
         self.conv_hr = nn.Conv2d(out_chan, out_chan, 3, 1, 1)
         self.conv_last = nn.Conv2d(out_chan, num_out_ch, 3, 1, 1)
 
-        self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2)
 
 
     def forward(self, lq):
@@ -134,15 +134,15 @@ class CLIPUNetGenerator(nn.Module):
 
         x4 = self.up_layers[0](x3)
         x4 = self.fuse_convs[0](torch.cat((x2, x4), dim=1))
-        x4 = self.lrelu(self.bn[0](x4))
+        x4 = self.lrelu(x4)
 
         x5 = self.up_layers[1](x4)
         x5 = self.fuse_convs[1](torch.cat((x1, x5), dim=1))
-        x5 = self.lrelu(self.bn[1](x5))
+        x5 = self.lrelu(x5)
 
         x6 = self.up_layers[2](x5)
         x6 = self.fuse_convs[2](torch.cat((x0, x6), dim=1))
-        x6 = self.lrelu(self.bn[2](x6))
+        x6 = self.lrelu(x6)
 
         if self.scale == 4:
             x7 = self.up_layers[3](x6)
