@@ -68,9 +68,9 @@ class TransposedConvUp(nn.Module):
         self.out_channels = out_chan
         self.scale_factor = factor
         self.kernel = kernel
-        self.blur = UpsampleUpFIRDn(kernel, True, blur_kernel, factor=2)
+        # self.blur = UpsampleUpFIRDn(kernel, True, blur_kernel, factor=2)
         self.up_conv = nn.ConvTranspose2d(in_chan, out_chan, kernel, stride=2)
-        self.conv = nn.Conv2d(out_chan, out_chan, kernel, 1, 1)
+        # self.conv = nn.Conv2d(out_chan, out_chan, kernel, 1, 1)
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
 
     def forward(self, x):

@@ -19,7 +19,7 @@ class ResidualBlock(nn.Module):
         
         if in_channels != out_channels:
             self.skip = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, 1, bias=False),
+                nn.Conv2d(in_channels, out_channels, 1),
                 nn.BatchNorm2d(out_channels)
             )
         else:
@@ -53,7 +53,7 @@ def calculate_parameters(net):
         out += param.numel()
     return out
 
-# @ARCH_REGISTRY.register(suffix='basicsr')
+@ARCH_REGISTRY.register()
 class CLIPUNetGenerator(nn.Module):
     def __init__(self, num_out_ch=3, scale=4) -> None:
         super().__init__()
@@ -74,7 +74,7 @@ class CLIPUNetGenerator(nn.Module):
         ])
         clip.requires_grad_(False) 
         self.channels = {'down2': 64}
-        for i in range(2,6):
+        for i in range(2,5):
             factor = 2**i
             self.channels['down'+str(factor)] = 64*factor
 
@@ -88,12 +88,12 @@ class CLIPUNetGenerator(nn.Module):
         self.clip_feature.append(nn.Sequential(clip.avgpool, clip.layer1)) #//4
         self.clip_feature.append(clip.layer2) #//8
         self.clip_feature.append(clip.layer3) #//16
-        self.clip_feature.append(clip.layer4) #//32
+        # self.clip_feature.append(clip.layer4) #//32
 
         self.up_layers = nn.ModuleList()
         self.fuse_convs = nn.ModuleList()
         self.bn = nn.ModuleList()
-        for i in range(5, 1, -1):
+        for i in range(4, 1, -1):
             factor = 2**i
             in_chan = self.channels['down'+str(factor)]
             out_chan = self.channels['down'+str(factor//2)]
@@ -104,7 +104,14 @@ class CLIPUNetGenerator(nn.Module):
                     ResidualBlock(out_chan*2, out_chan)
                 )
             )
-            # self.fuse_convs.append(nn.Conv2d(out_chan*2, out_chan, 3, 1, 1))
+            # NOTE: below gives about 25M param
+            # self.up_layers.append(TransposedConvUp(in_chan, in_chan, factor=2))
+            # self.fuse_convs.append(
+            #     nn.Sequential(
+            #         ResidualBlock(in_chan+out_chan, out_chan),
+            #         ResidualBlock(out_chan, out_chan)
+            #     )
+            # )  
             self.bn.append(nn.BatchNorm2d(out_chan))
         # upsample (from 224//2=112 to 224)
         # out_chan=64
@@ -124,29 +131,24 @@ class CLIPUNetGenerator(nn.Module):
         x1 = self.clip_feature[1](x0)
         x2 = self.clip_feature[2](x1)
         x3 = self.clip_feature[3](x2)
-        x4 = self.clip_feature[4](x3)
 
-        x5 = self.up_layers[0](x4)
-        x5 = self.fuse_convs[0](torch.cat((x3, x5), dim=1))
-        x5 = self.lrelu(self.bn[0](x5))
+        x4 = self.up_layers[0](x3)
+        x4 = self.fuse_convs[0](torch.cat((x2, x4), dim=1))
+        x4 = self.lrelu(self.bn[0](x4))
 
-        x6 = self.up_layers[1](x5)
-        x6 = self.fuse_convs[1](torch.cat((x2, x6), dim=1))
-        x6 = self.lrelu(self.bn[1](x6))
+        x5 = self.up_layers[1](x4)
+        x5 = self.fuse_convs[1](torch.cat((x1, x5), dim=1))
+        x5 = self.lrelu(self.bn[1](x5))
 
-        x7 = self.up_layers[2](x6)
-        x7 = self.fuse_convs[2](torch.cat((x1, x7), dim=1))
-        x7 = self.lrelu(self.bn[2](x7))
-        
-        x8 = self.up_layers[3](x7)
-        x8 = self.fuse_convs[3](torch.cat((x0, x8), dim=1))
-        x8 = self.lrelu(self.bn[3](x8))
+        x6 = self.up_layers[2](x5)
+        x6 = self.fuse_convs[2](torch.cat((x0, x6), dim=1))
+        x6 = self.lrelu(self.bn[2](x6))
 
         if self.scale == 4:
-            x9 = self.up_layers[4](x8)
-            out = self.conv_last(self.lrelu(self.conv_hr(x9)))
+            x7 = self.up_layers[3](x6)
+            out = self.conv_last(self.lrelu(self.conv_hr(x7)))
         else: # if scale==2, from 56->112
-            out = self.conv_last(self.lrelu(self.conv_hr(x8)))
+            out = self.conv_last(self.lrelu(self.conv_hr(x6)))
         #TODO: inverse normalize
         out = self.inv_clip_transform(out)
         return out
