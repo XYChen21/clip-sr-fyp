@@ -395,7 +395,7 @@ def convert_weights(model: nn.Module):
     model.apply(_convert_weights_to_fp16)
 
 
-def build_model(state_dict: dict):
+def build_model(state_dict: dict, pretrained=True):
     vit = "visual.proj" in state_dict
 
     if vit:
@@ -431,5 +431,6 @@ def build_model(state_dict: dict):
             del state_dict[key]
 
     convert_weights(model)
-    model.load_state_dict(state_dict)
-    return model.eval()
+    if pretrained:
+        model.load_state_dict(state_dict)
+    return model
