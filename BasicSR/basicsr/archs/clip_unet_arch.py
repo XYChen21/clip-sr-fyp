@@ -55,7 +55,7 @@ def calculate_parameters(net):
 
 @ARCH_REGISTRY.register()
 class CLIPUNetGenerator(nn.Module):
-    def __init__(self, num_out_ch=3, scale=4, pretrained=True, num_clip_features=4) -> None:
+    def __init__(self, num_out_ch=3, scale=4, pretrained=True, finetune=False, num_clip_features=4) -> None:
         super().__init__()
         self.scale = scale
         self.num_clip_features = num_clip_features
@@ -74,7 +74,7 @@ class CLIPUNetGenerator(nn.Module):
             Normalize(mean = (0., 0., 0.), std = (1/0.26862954, 1/0.26130258, 1/0.27577711)),
             Normalize(mean = (-0.48145466, -0.4578275, -0.40821073), std = (1., 1., 1.)),
         ])
-        if pretrained:
+        if pretrained and not finetune:
             clip.requires_grad_(False)
             clip.eval()
 
@@ -120,7 +120,7 @@ class CLIPUNetGenerator(nn.Module):
         # out_chan=64
 
         if self.scale == 4:
-            self.up_layers[f'to1'] = (TransposedConvUp(out_chan, out_chan, factor=2))
+            self.up_layers['to1'] = TransposedConvUp(out_chan, out_chan, factor=2)
         self.conv_hr = nn.Conv2d(out_chan, out_chan, 3, 1, 1)
         self.conv_last = nn.Conv2d(out_chan, num_out_ch, 3, 1, 1)
 
@@ -146,7 +146,7 @@ class CLIPUNetGenerator(nn.Module):
             x = self.lrelu(x)
 
         if self.scale == 4:
-            x = self.up_layers[f'to1'](x)
+            x = self.up_layers['to1'](x)
             out = self.conv_last(self.lrelu(self.conv_hr(x)))
         else: # if scale==2, from 56->112
             out = self.conv_last(self.lrelu(self.conv_hr(x)))

@@ -87,6 +87,7 @@ network_g:
   scale: 4
   pretrained: false
   # num_clip_features: 4
+  # finetune: False
 
 # path
 path:
