@@ -11,7 +11,8 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            "args": ["-opt","options/train/CLIPUNet/train_clipunet_x4plus.yml"]
+            // "args": ["-opt","options/train/CLIPUNet/train_clipunet_x4plus.yml"]
+            "args": ["-opt","options/train/RealESRNet/train_realesrnet_x4plus.yml"]
         }
     ]
 }

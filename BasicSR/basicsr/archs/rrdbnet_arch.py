@@ -3,7 +3,7 @@ from torch import nn as nn
 from torch.nn import functional as F
 
 from basicsr.utils.registry import ARCH_REGISTRY
-from .arch_util import default_init_weights, make_layer, pixel_unshuffle
+from basicsr.archs.arch_util import default_init_weights, make_layer, pixel_unshuffle
 
 
 class ResidualDenseBlock(nn.Module):
@@ -117,3 +117,15 @@ class RRDBNet(nn.Module):
         feat = self.lrelu(self.conv_up2(F.interpolate(feat, scale_factor=2, mode='nearest')))
         out = self.conv_last(self.lrelu(self.conv_hr(feat)))
         return out
+
+# def calculate_parameters(net):
+#     out = 0
+#     for name, param in net.named_parameters():
+#         if 'clip_feature' in name:
+#             continue
+#         print(name, param.numel())
+#         out += param.numel()
+#     return out
+# if __name__ == '__main__':
+#     test = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32)
+#     print(calculate_parameters(test))

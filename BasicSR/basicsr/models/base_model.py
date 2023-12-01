@@ -67,6 +67,7 @@ class BaseModel():
             if val >= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
+                self.save_network(self.net_g, 'net_g', 'best'+metric)
         else:
             if val <= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val

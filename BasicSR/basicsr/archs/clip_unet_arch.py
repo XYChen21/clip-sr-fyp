@@ -44,6 +44,7 @@ class ResidualBlock(nn.Module):
 #         layers.append(block(**build_opt))
 #     return nn.Sequential(*layers)
 
+# print(calculate_parameters(test))
 def calculate_parameters(net):
     out = 0
     for name, param in net.named_parameters():

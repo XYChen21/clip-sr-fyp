@@ -122,6 +122,7 @@ def train_pipeline(root_path):
 
     # create model
     model = build_model(opt)
+    
     if resume_state:  # resume training
         model.resume_training(resume_state)  # handle optimizers and schedulers
         logger.info(f"Resuming training from epoch: {resume_state['epoch']}, iter: {resume_state['iter']}.")
@@ -151,50 +152,50 @@ def train_pipeline(root_path):
     data_timer, iter_timer = AvgTimer(), AvgTimer()
     start_time = time.time()
 
-    for epoch in range(start_epoch, total_epochs + 1):
-        train_sampler.set_epoch(epoch)
-        prefetcher.reset()
-        train_data = prefetcher.next()
+    # for epoch in range(start_epoch, total_epochs + 1):
+    #     train_sampler.set_epoch(epoch)
+    #     prefetcher.reset()
+    #     train_data = prefetcher.next()
 
-        while train_data is not None:
-            data_timer.record()
+    #     while train_data is not None:
+    #         data_timer.record()
 
-            current_iter += 1
-            if current_iter > total_iters:
-                break
-            # update learning rate
-            model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
-            # training
-            model.feed_data(train_data)
-            model.optimize_parameters(current_iter)
-            iter_timer.record()
-            if current_iter == 1:
-                # reset start time in msg_logger for more accurate eta_time
-                # not work in resume mode
-                msg_logger.reset_start_time()
-            # log
-            if current_iter % opt['logger']['print_freq'] == 0:
-                log_vars = {'epoch': epoch, 'iter': current_iter}
-                log_vars.update({'lrs': model.get_current_learning_rate()})
-                log_vars.update({'time': iter_timer.get_avg_time(), 'data_time': data_timer.get_avg_time()})
-                log_vars.update(model.get_current_log())
-                msg_logger(log_vars)
+    #         current_iter += 1
+    #         if current_iter > total_iters:
+    #             break
+    #         # update learning rate
+    #         model.update_learning_rate(current_iter, warmup_iter=opt['train'].get('warmup_iter', -1))
+    #         # training
+    #         model.feed_data(train_data)
+    #         model.optimize_parameters(current_iter)
+    #         iter_timer.record()
+    #         if current_iter == 1:
+    #             # reset start time in msg_logger for more accurate eta_time
+    #             # not work in resume mode
+    #             msg_logger.reset_start_time()
+    #         # log
+    #         if current_iter % opt['logger']['print_freq'] == 0:
+    #             log_vars = {'epoch': epoch, 'iter': current_iter}
+    #             log_vars.update({'lrs': model.get_current_learning_rate()})
+    #             log_vars.update({'time': iter_timer.get_avg_time(), 'data_time': data_timer.get_avg_time()})
+    #             log_vars.update(model.get_current_log())
+    #             msg_logger(log_vars)
 
             # save models and training states
-            if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
-                logger.info('Saving models and training states.')
-                model.save(epoch, current_iter)
+            # if current_iter % opt['logger']['save_checkpoint_freq'] == 0:
+            #     logger.info('Saving models and training states.')
+            #     model.save(epoch, current_iter)
 
             # validation
-            if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
-                if len(val_loaders) > 1:
-                    logger.warning('Multiple validation datasets are *only* supported by SRModel.')
-                for val_loader in val_loaders:
-                    model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
+    # if opt.get('val') is not None and (current_iter % opt['val']['val_freq'] == 0):
+    #     if len(val_loaders) > 1:
+    #         logger.warning('Multiple validation datasets are *only* supported by SRModel.')
+    #     for val_loader in val_loaders:
+    #         model.validation(val_loader, current_iter, tb_logger, opt['val']['save_img'])
 
-            data_timer.start()
-            iter_timer.start()
-            train_data = prefetcher.next()
+            # data_timer.start()
+            # iter_timer.start()
+            # train_data = prefetcher.next()
         # end of iter
 
     # end of epoch
