@@ -181,6 +181,233 @@ class UpsampleUpFIRDn(nn.Module):
         )
 
         return out
+    
+# https://github.com/open-mmlab/mmagic/tree/main/mmagic/models/editors/stylegan2
+class NoiseInjection(nn.Module):
+    """Noise Injection Module.
 
+    In StyleGAN2, they adopt this module to inject spatial random noise map in
+    the generators.
+
+    Args:
+        noise_weight_init (float, optional): Initialization weight for noise
+            injection. Defaults to ``0.``.
+        fixed_noise (bool, optional): Whether to inject a fixed noise. Defaults
+        to ``False``.
+    """
+
+    def __init__(self, noise_weight_init=0., fixed_noise=False):
+        super().__init__()
+        self.weight = nn.Parameter(torch.zeros(1).fill_(noise_weight_init))
+        self.fixed_noise = fixed_noise
+
+    def forward(self, image, noise=None, return_noise=False):
+        """Forward Function.
+
+        Args:
+            image (Tensor): Spatial features with a shape of (N, C, H, W).
+            noise (Tensor, optional): Noises from the outside.
+                Defaults to None.
+            return_noise (bool, optional): Whether to return noise tensor.
+                Defaults to False.
+
+        Returns:
+            Tensor: Output features.
+        """
+        if noise is None:
+            batch, _, height, width = image.shape
+            noise = image.new_empty(batch, 1, height, width).normal_()
+            if self.fixed_noise:
+                torch.manual_seed(1024)
+                noise = torch.randn(batch, 1, height, width).cuda()
+
+        noise = noise.to(image.dtype)
+        if return_noise:
+            return image + self.weight.to(image.dtype) * noise, noise
+
+        return image + self.weight.to(image.dtype) * noise
+
+class ModulatedConv2d(nn.Module):
+    r"""Modulated Conv2d in StyleGANv2.
+
+    This module implements the modulated convolution layers proposed in
+    StyleGAN2. Details can be found in Analyzing and Improving the Image
+    Quality of StyleGAN, CVPR2020.
+
+    Args:
+        in_channels (int): Input channels.
+        out_channels (int): Output channels.
+        kernel_size (int): Kernel size, same as :obj:`nn.Con2d`.
+        style_channels (int): Channels for the style codes.
+        demodulate (bool, optional): Whether to adopt demodulation.
+            Defaults to True.
+        upsample (bool, optional): Whether to adopt upsampling in features.
+            Defaults to False.
+        downsample (bool, optional): Whether to adopt downsampling in features.
+            Defaults to False.
+        blur_kernel (list[int], optional): Blurry kernel.
+            Defaults to [1, 3, 3, 1].
+        equalized_lr_cfg (dict | None, optional): Configs for equalized lr.
+            Defaults to dict(mode='fan_in', lr_mul=1., gain=1.).
+        style_mod_cfg (dict, optional): Configs for style modulation module.
+            Defaults to dict(bias_init=1.).
+        style_bias (float, optional): Bias value for style code.
+            Defaults to 0..
+        eps (float, optional): Epsilon value to avoid computation error.
+            Defaults to 1e-8.
+    """
+
+    def __init__(
+            self,
+            in_channels,
+            out_channels,
+            kernel_size,
+            style_channels,
+            demodulate=True,
+            upsample=False,
+            downsample=False,
+            style_bias=0.,
+            padding=None,  # self define padding
+            eps=1e-8,):
+        super().__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.style_channels = style_channels
+        self.demodulate = demodulate
+        self.upsample = upsample
+        self.downsample = downsample
+        self.style_bias = style_bias
+        self.eps = eps
+
+        self.style_modulation = nn.Linear(style_channels, in_channels)
+        # set lr_mul for conv weight
+        lr_mul_ = 1.
+        self.weight = nn.Parameter(
+            torch.randn(1, out_channels, in_channels, kernel_size,
+                        kernel_size).div_(lr_mul_))
+
+        self.padding = padding if padding else (kernel_size // 2)
+
+    def forward(self, x, style, input_gain=None):
+        n, c, h, w = x.shape
+        weight = self.weight
+        # process style code
+        style = self.style_modulation(style).view(n, 1, c, 1, 1) + self.style_bias
+        # combine weight and style
+        weight = weight * style
+        if self.demodulate:
+            demod = torch.rsqrt(weight.pow(2).sum([2, 3, 4]) + self.eps)
+            weight = weight * demod.view(n, self.out_channels, 1, 1, 1)
+
+        weight = weight.view(n * self.out_channels, c, self.kernel_size, self.kernel_size)
+
+        if self.upsample:
+            x = x.reshape(1, n * c, h, w)
+            weight = weight.view(n, self.out_channels, c, self.kernel_size, self.kernel_size)
+            weight = weight.transpose(1,
+                                      2).reshape(n * c, self.out_channels,
+                                                 self.kernel_size,
+                                                 self.kernel_size)
+            x = F.conv_transpose2d(x, weight, padding=0, stride=2, groups=n)
+            x = x.reshape(n, self.out_channels, *x.shape[-2:])
+            # x = self.blur(x)
+        elif self.downsample:
+            x = self.blur(x)
+            x = x.view(1, n * self.in_channels, *x.shape[-2:])
+            x = F.conv2d(x, weight, stride=2, padding=0, groups=n)
+            x = x.view(n, self.out_channels, *x.shape[-2:])
+        else:
+            x = x.reshape(1, n * c, h, w)
+            x = F.conv2d(x, weight, stride=1, padding=self.padding, groups=n)
+            x = x.view(n, self.out_channels, *x.shape[-2:])
+        return x
+
+class ModulatedStyleConv(nn.Module):
+    """Modulated Style Convolution.
+
+    In this module, we integrate the modulated conv2d, noise injector and
+    activation layers into together.
+
+    Args:
+        in_channels (int): Input channels.
+        out_channels (int): Output channels.
+        kernel_size (int): Kernel size, same as :obj:`nn.Con2d`.
+        style_channels (int): Channels for the style codes.
+        demodulate (bool, optional): Whether to adopt demodulation.
+            Defaults to True.
+        upsample (bool, optional): Whether to adopt upsampling in features.
+            Defaults to False.
+        downsample (bool, optional): Whether to adopt downsampling in features.
+            Defaults to False.
+        blur_kernel (list[int], optional): Blurry kernel.
+            Defaults to [1, 3, 3, 1].
+        equalized_lr_cfg (dict | None, optional): Configs for equalized lr.
+            Defaults to dict(mode='fan_in', lr_mul=1., gain=1.).
+        style_mod_cfg (dict, optional): Configs for style modulation module.
+            Defaults to dict(bias_init=1.).
+        style_bias (float, optional): Bias value for style code.
+            Defaults to ``0.``.
+        fp16_enabled (bool, optional): Whether to use fp16 training in this
+            module. Defaults to False.
+        conv_clamp (float, optional): Clamp the convolutional layer results to
+            avoid gradient overflow. Defaults to `256.0`.
+    """
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 style_channels,
+                 upsample=False,
+                 demodulate=True,
+                 style_bias=0.,
+                 fixed_noise=False):
+        super().__init__()
+
+        self.conv = ModulatedConv2d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            style_channels,
+            demodulate=demodulate,
+            upsample=upsample,
+            style_bias=style_bias)
+        self.noise_injector = NoiseInjection(fixed_noise=fixed_noise)
+        self.activate = nn.LeakyReLU(negative_slope=0.2)
+
+    def forward(self,
+                x,
+                style,
+                noise=None,
+                add_noise=True,
+                return_noise=False):
+        """Forward Function.
+
+        Args:
+            x ([Tensor): Input features with shape of (N, C, H, W).
+            style (Tensor): Style latent with shape of (N, C).
+            noise (Tensor, optional): Noise for injection. Defaults to None.
+            add_noise (bool, optional): Whether apply noise injection to
+                feature. Defaults to True.
+            return_noise (bool, optional): Whether to return noise tensors.
+                Defaults to False.
+
+        Returns:
+            Tensor: Output features with shape of (N, C, H, W)
+        """
+        out = self.conv(x, style)
+
+        if add_noise:
+            if return_noise:
+                out, noise = self.noise_injector(
+                    out, noise=noise, return_noise=return_noise)
+            else:
+                out = self.noise_injector(
+                    out, noise=noise, return_noise=return_noise)
+
+        out = self.activate(out)
+
+        return out
 
 
