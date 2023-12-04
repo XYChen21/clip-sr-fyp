@@ -4,17 +4,17 @@ from torch import nn
 from torchvision.transforms import Compose, Normalize
 from basicsr.archs.clip_arch import build_model
 from basicsr.utils.registry import ARCH_REGISTRY
-from basicsr.utils.upsample import TransposedConvUp, ModulatedStyleConv
-
+from basicsr.utils.upsample import ModulatedStyleConv
+    
 class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_chan, out_chan):
         super(ResidualBlock, self).__init__()
-        self.conv = ModulatedStyleConv(in_channels, out_channels, 3, 1024)
-        
-        if in_channels != out_channels:
-            self.skip = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, 1),
-                nn.BatchNorm2d(out_channels)
+        self.conv = ModulatedStyleConv(in_chan, out_chan, 3, 1024)
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2)
+        if in_chan != out_chan:
+            self.skip = self.skip = nn.Sequential(
+                nn.Conv2d(in_chan, out_chan, 1),
+                nn.BatchNorm2d(out_chan)
             )
         else:
             self.skip = nn.Identity()
@@ -22,8 +22,45 @@ class ResidualBlock(nn.Module):
     def forward(self, x, style):
         out = self.conv(x, style)
         out += self.skip(x)
-        
+        out = self.lrelu(out)
         return out
+    
+class ConvBlock(nn.Module):
+    def __init__(self, in_chan, out_chan):
+        super(ConvBlock, self).__init__()
+        self.conv1 = ResidualBlock(in_chan, out_chan)
+        self.conv2 = ResidualBlock(out_chan, out_chan)
+        self.lrelu = nn.LeakyReLU(negative_slope=0.2)
+
+    def forward(self, x, clip_style1, clip_style2):
+        x = self.conv1(x, clip_style1)
+        x = self.conv2(x, clip_style2)
+        x = self.lrelu(x)
+        return x
+
+class DownBlock(nn.Module):
+    def __init__(self, in_chan, out_chan):
+        super(DownBlock, self).__init__()
+        self.down = ModulatedStyleConv(in_chan, in_chan, kernel_size=2, style_channels=1024, downsample=True)
+        self.convs = ConvBlock(in_chan, out_chan)
+
+    def forward(self, x, clip_style1, clip_style2, clip_style3):
+        x = self.down(x, clip_style1)
+        x = self.convs(x, clip_style2, clip_style3)
+        return x
+
+class UpBlock(nn.Module):
+    def __init__(self, in_chan, out_chan):
+        super(UpBlock, self).__init__()
+        self.up = ModulatedStyleConv(in_chan, out_chan, kernel_size=2, style_channels=1024, upsample=True)
+        self.convs = ConvBlock(out_chan*2, out_chan)
+
+    def forward(self, x_down, x_up, clip_style1, clip_style2, clip_style3):
+        x_up = self.up(x_up, clip_style1)
+        x = torch.cat((x_up, x_down), dim=1)
+        x = self.convs(x, clip_style2, clip_style3)
+        return x
+
     
 def calculate_parameters(net):
     out = 0
@@ -37,18 +74,17 @@ def calculate_parameters(net):
     
 @ARCH_REGISTRY.register()
 class CLIPSFTUNetGenerator(nn.Module):
-    def __init__(self, num_out_ch=3, scale=4, pretrained=True, finetune=False, num_clip_features=4) -> None:
+    def __init__(self, num_out_ch=3, scale=4, pretrained=True, finetune=False, num_downsamples=4) -> None:
         super().__init__()
         self.scale = scale
-        self.num_clip_features = num_clip_features
-
+        self.num_downsamples = num_downsamples
 
         clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
         # clip_path = '/home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
         with open(clip_path, 'rb') as opened_file:
             model = torch.jit.load(opened_file, map_location="cpu").eval()
-            clip = build_model(model.state_dict(), pretrained).visual 
-        clip.float()
+            self.clip = build_model(model.state_dict(), pretrained).visual.float()
+
         self.clip_transform = Compose([
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
@@ -57,52 +93,26 @@ class CLIPSFTUNetGenerator(nn.Module):
             Normalize(mean = (-0.48145466, -0.4578275, -0.40821073), std = (1., 1., 1.)),
         ])
         if pretrained and not finetune:
-            clip.requires_grad_(False)
-            clip.eval()
+            self.clip.requires_grad_(False)
+            self.clip.eval()
 
 
         self.channels = {}
-        self.clip_feature = nn.ModuleDict()
-        for i in range(1, 6):
+        self.first = ConvBlock(in_chan=3, out_chan=64)
+        self.down_layers = nn.ModuleDict()
+        for i in range(1, num_downsamples+1):
             factor = 2**i
-            if factor == 2:
-                self.channels[f'down{factor}'] = 64
-                first_down = nn.Sequential(
-                    clip.conv1, clip.bn1, clip.relu1,
-                    clip.conv2, clip.bn2, clip.relu2,
-                    clip.conv3, clip.bn3, clip.relu3,
-                )
-                self.clip_feature[f'down{factor}'] = first_down #//2
-            elif factor == 4:
-                self.channels[f'down{factor}'] = 64*factor
-                self.clip_feature[f'down{factor}'] = nn.Sequential(clip.avgpool, clip.layer1) #//4
-            elif factor == 8:
-                self.channels[f'down{factor}'] = 64*factor
-                self.clip_feature[f'down{factor}'] = clip.layer2 #//8
-            elif factor == 16:
-                self.channels[f'down{factor}'] = 64*factor
-                self.clip_feature[f'down{factor}'] = clip.layer3 #//16
-            elif factor == 32:
-                self.channels[f'down{factor}'] = 64*factor
-                self.clip_feature[f'down{factor}'] = clip.layer4 #//32
-        self.clip_feature['last'] = clip.attnpool
-
+            self.channels[f'down{factor}'] = 64*factor
+            self.down_layers[f'down{factor}'] = DownBlock(in_chan=64*factor//2, out_chan=64*factor)
 
         self.up_layers = nn.ModuleDict()
-        self.fuse_convs = nn.ModuleDict()
-        for i in range(num_clip_features-1, 0, -1):
+        for i in range(num_downsamples-1, 0, -1):
             factor = 2**i
             in_chan = self.channels[f'down{factor*2}']
             out_chan = self.channels[f'down{factor}']
-            self.up_layers[f'to{factor}'] = ModulatedStyleConv(in_chan, out_chan, kernel_size=2, style_channels=1024, upsample=True)
-            self.fuse_convs[f'fuse{factor}'] = nn.ModuleList([
-                ResidualBlock(out_chan*2, out_chan*2),
-                ResidualBlock(out_chan*2, out_chan)
-            ])
-        # upsample (from 224//2=112 to 224)
-        # out_chan=64
-        if self.scale == 4:
-            self.up_layers['to1'] = ModulatedStyleConv(out_chan, out_chan, kernel_size=2, style_channels=1024, upsample=True)
+            self.up_layers[f'up{factor}'] = UpBlock(in_chan=in_chan, out_chan=out_chan)
+        
+        self.last = ModulatedStyleConv(out_chan, out_chan, kernel_size=2, style_channels=1024, upsample=True)
         self.conv_hr = nn.Conv2d(out_chan, out_chan, 3, 1, 1)
         self.conv_last = nn.Conv2d(out_chan, num_out_ch, 3, 1, 1)
 
@@ -113,35 +123,33 @@ class CLIPSFTUNetGenerator(nn.Module):
         lq = F.interpolate(lq, scale_factor=self.scale, mode='bicubic')
         #TODO: normalize
         x = self.clip_transform(lq)
-        clip_features = {}
-        for i in range(1, self.num_clip_features+1):
-            factor = 2**i
-            x = self.clip_feature[f'down{factor}'](x)
-            clip_features[f'down{factor}'] = x
-        for i in range(self.num_clip_features+1, 6):
-            factor= 2**i
-            clip_features[f'down{factor}'] = self.clip_feature[f'down{factor}'](clip_features[f'down{factor//2}'])
-        latent = self.clip_feature['last'](clip_features['down32']) # B, 1024
-        num_latents = (self.num_clip_features-1)*2+1
+
+        latent = self.clip(x) # B, 1024
+        num_latents = self.num_downsamples*2*3
         latent = latent.unsqueeze(1).repeat(1, num_latents, 1)
 
-        _idx = 0
-        for i in range(self.num_clip_features-1, 0, -1):
+        x = self.first(x, latent[:, 0], latent[:, 1])
+        downsamples = {}
+        _idx = 2
+        for i in range(1, self.num_downsamples+1):
             factor = 2**i
-            x = self.up_layers[f'to{factor}'](x, latent[:, _idx])
-            x = self.fuse_convs[f'fuse{factor}'][1](
-                self.fuse_convs[f'fuse{factor}'][0](
-                    torch.cat((x, clip_features[f'down{factor}']), dim=1),
-                    latent[:, _idx+1]
-                ),
-                latent[:, _idx+1]
-            )
-            x = self.lrelu(x)
-            _idx += 2
+            x = self.down_layers[f'down{factor}'](x, latent[:, _idx], latent[:, _idx+1], latent[:, _idx+2])
+            downsamples[f'down{factor}'] = x
+            _idx += 3
 
-        if self.scale == 4:
-            x = self.up_layers['to1'](x, latent[:, _idx])
-            out = self.conv_last(self.lrelu(self.conv_hr(x)))
+        for i in range(self.num_downsamples-1, 0, -1):
+            factor = 2**i
+            x = self.up_layers[f'up{factor}'](
+                downsamples[f'down{factor}'],
+                x,
+                latent[:, _idx], 
+                latent[:, _idx+1], 
+                latent[:, _idx+2]
+            )
+            _idx += 3
+
+        x = self.last(x, latent[:, _idx])
+        out = self.conv_last(self.lrelu(self.conv_hr(x)))
         
         #TODO: inverse normalize
         out = self.inv_clip_transform(out)

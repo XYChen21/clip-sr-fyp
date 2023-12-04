@@ -289,7 +289,7 @@ class ModulatedConv2d(nn.Module):
 
         self.padding = padding if padding else (kernel_size // 2)
 
-    def forward(self, x, style, input_gain=None):
+    def forward(self, x, style):
         n, c, h, w = x.shape
         weight = self.weight
         # process style code
@@ -313,7 +313,7 @@ class ModulatedConv2d(nn.Module):
             x = x.reshape(n, self.out_channels, *x.shape[-2:])
             # x = self.blur(x)
         elif self.downsample:
-            x = self.blur(x)
+            # x = self.blur(x)
             x = x.view(1, n * self.in_channels, *x.shape[-2:])
             x = F.conv2d(x, weight, stride=2, padding=0, groups=n)
             x = x.view(n, self.out_channels, *x.shape[-2:])
@@ -360,6 +360,7 @@ class ModulatedStyleConv(nn.Module):
                  kernel_size,
                  style_channels,
                  upsample=False,
+                 downsample=False,
                  demodulate=True,
                  style_bias=0.,
                  fixed_noise=False):
@@ -372,6 +373,7 @@ class ModulatedStyleConv(nn.Module):
             style_channels,
             demodulate=demodulate,
             upsample=upsample,
+            downsample=downsample,
             style_bias=style_bias)
         self.noise_injector = NoiseInjection(fixed_noise=fixed_noise)
         self.activate = nn.LeakyReLU(negative_slope=0.2)
