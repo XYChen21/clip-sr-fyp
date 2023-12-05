@@ -41,14 +41,12 @@ class ConvBlock(nn.Module):
 class DownBlock(nn.Module):
     def __init__(self, in_chan, out_chan):
         super(DownBlock, self).__init__()
-        self.down = ModulatedStyleConv(in_chan, out_chan, kernel_size=2, style_channels=1024, downsample=True)
-        # self.conv1 = ModulatedStyleConv(in_chan, out_chan, 3, 1024)
-        self.conv = ModulatedStyleConv(out_chan, out_chan, 3, 1024)
+        self.down = ModulatedStyleConv(in_chan, in_chan, kernel_size=2, style_channels=1024, downsample=True)
+        self.convs = ConvBlock(in_chan, out_chan)
 
-    def forward(self, x, clip_style1, clip_style2):
+    def forward(self, x, clip_style1, clip_style2, clip_style3):
         x = self.down(x, clip_style1)
-        # x = self.conv1(x, clip_style2)
-        x = self.conv(x, clip_style2)
+        x = self.convs(x, clip_style2, clip_style3)
         return x
 
 class UpBlock(nn.Module):
@@ -100,10 +98,7 @@ class CLIPSFTUNetGenerator(nn.Module):
 
 
         self.channels = {}
-        self.first = nn.ModuleList([
-            ModulatedStyleConv(3, 64, 3, 1024),
-            ModulatedStyleConv(64, 64, 3, 1024)
-        ])
+        self.first = ConvBlock(in_chan=3, out_chan=64)
         self.down_layers = nn.ModuleDict()
         for i in range(1, num_downsamples+1):
             factor = 2**i
@@ -130,19 +125,17 @@ class CLIPSFTUNetGenerator(nn.Module):
         x = self.clip_transform(lq)
 
         latent = self.clip(x) # B, 1024
-        num_latents = self.num_downsamples*(2+3)
-        self.num_downsamples*2*3
+        num_latents = self.num_downsamples*2*3
         latent = latent.unsqueeze(1).repeat(1, num_latents, 1)
 
-        x = self.first[0](x, latent[:, 0])
-        x = self.first[1](x, latent[:, 1])
+        x = self.first(x, latent[:, 0], latent[:, 1])
         downsamples = {}
         _idx = 2
         for i in range(1, self.num_downsamples+1):
             factor = 2**i
-            x = self.down_layers[f'down{factor}'](x, latent[:, _idx], latent[:, _idx+1])
+            x = self.down_layers[f'down{factor}'](x, latent[:, _idx], latent[:, _idx+1], latent[:, _idx+2])
             downsamples[f'down{factor}'] = x
-            _idx += 2
+            _idx += 3
 
         for i in range(self.num_downsamples-1, 0, -1):
             factor = 2**i
@@ -161,7 +154,7 @@ class CLIPSFTUNetGenerator(nn.Module):
         #TODO: inverse normalize
         out = self.inv_clip_transform(out)
         return out
-# 36M
+# 42.6M
 # if __name__ == '__main__':
 #     test = CLIPSFTUNetGenerator()
 #     print(calculate_parameters(test))
