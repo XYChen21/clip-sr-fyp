@@ -19,8 +19,8 @@ class ResidualBlock(nn.Module):
         else:
             self.skip = nn.Identity()
     
-    def forward(self, x, style):
-        out = self.conv(x, style)
+    def forward(self, x, clip_style):
+        out = self.conv(x, clip_style)
         out += self.skip(x)
         out = self.lrelu(out)
         return out
@@ -32,9 +32,9 @@ class ConvBlock(nn.Module):
         self.conv2 = ResidualBlock(out_chan, out_chan)
         self.lrelu = nn.LeakyReLU(negative_slope=0.2)
 
-    def forward(self, x, clip_style1, clip_style2):
-        x = self.conv1(x, clip_style1)
-        x = self.conv2(x, clip_style2)
+    def forward(self, x, clip_style):
+        x = self.conv1(x, clip_style)
+        x = self.conv2(x, clip_style)
         x = self.lrelu(x)
         return x
 
@@ -44,9 +44,9 @@ class DownBlock(nn.Module):
         self.down = ModulatedStyleConv(in_chan, in_chan, kernel_size=2, style_channels=1024, downsample=True)
         self.convs = ConvBlock(in_chan, out_chan)
 
-    def forward(self, x, clip_style1, clip_style2, clip_style3):
-        x = self.down(x, clip_style1)
-        x = self.convs(x, clip_style2, clip_style3)
+    def forward(self, x, clip_style):
+        x = self.down(x, clip_style)
+        x = self.convs(x, clip_style)
         return x
 
 class UpBlock(nn.Module):
@@ -55,10 +55,10 @@ class UpBlock(nn.Module):
         self.up = ModulatedStyleConv(in_chan, out_chan, kernel_size=2, style_channels=1024, upsample=True)
         self.convs = ConvBlock(out_chan*2, out_chan)
 
-    def forward(self, x_down, x_up, clip_style1, clip_style2, clip_style3):
-        x_up = self.up(x_up, clip_style1)
+    def forward(self, x_down, x_up, clip_style):
+        x_up = self.up(x_up, clip_style)
         x = torch.cat((x_up, x_down), dim=1)
-        x = self.convs(x, clip_style2, clip_style3)
+        x = self.convs(x, clip_style)
         return x
 
     
@@ -125,30 +125,21 @@ class CLIPSFTUNetGenerator(nn.Module):
         x = self.clip_transform(lq)
 
         latent = self.clip(x) # B, 1024
-        num_latents = self.num_downsamples*2*3
-        latent = latent.unsqueeze(1).repeat(1, num_latents, 1)
+        # num_latents = self.num_downsamples*2*3
+        # latent = latent.unsqueeze(1).repeat(1, num_latents, 1)
 
-        x = self.first(x, latent[:, 0], latent[:, 1])
+        x = self.first(x, latent)
         downsamples = {}
-        _idx = 2
         for i in range(1, self.num_downsamples+1):
             factor = 2**i
-            x = self.down_layers[f'down{factor}'](x, latent[:, _idx], latent[:, _idx+1], latent[:, _idx+2])
+            x = self.down_layers[f'down{factor}'](x, latent)
             downsamples[f'down{factor}'] = x
-            _idx += 3
 
         for i in range(self.num_downsamples-1, 0, -1):
             factor = 2**i
-            x = self.up_layers[f'up{factor}'](
-                downsamples[f'down{factor}'],
-                x,
-                latent[:, _idx], 
-                latent[:, _idx+1], 
-                latent[:, _idx+2]
-            )
-            _idx += 3
+            x = self.up_layers[f'up{factor}'](downsamples[f'down{factor}'], x, latent)
 
-        x = self.last(x, latent[:, _idx])
+        x = self.last(x, latent)
         out = self.conv_last(self.lrelu(self.conv_hr(x)))
         
         #TODO: inverse normalize
