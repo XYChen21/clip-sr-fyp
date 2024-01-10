@@ -226,16 +226,16 @@ def generate_lq(root_path):
         img_name = path_list.pop(-1)
         model.feed_data(val_data)
         lq = model.lq.detach().cpu()
-        gt = model.gt.detach().cpu()
+        # gt = model.gt.detach().cpu()
         lq_img = tensor2img([lq])
-        gt_img = tensor2img([gt])
+        # gt_img = tensor2img([gt])
         save_lq_path = osp.join('/'.join(path_list[:-1]), 'val_lq',
                                 f'{img_name}_processed{ext}')
-        save_gt_path = osp.join('/'.join(path_list[:-1]), 'val_gt',
-                                f'{img_name}_processed{ext}')
+        # save_gt_path = osp.join('/'.join(path_list[:-1]), 'val_gt',
+        #                         f'{img_name}_processed{ext}')
 
         imwrite(lq_img, save_lq_path)
-        imwrite(gt_img, save_gt_path)
+        # imwrite(gt_img, save_gt_path)
 
 
 if __name__ == '__main__':
