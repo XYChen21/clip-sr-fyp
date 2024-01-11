@@ -14,8 +14,8 @@ datasets:
   train:
     name: DF2K
     type: PairedImageDataset
-    dataroot_gt: /mnt/slurm_home/xychen/DF2K/DF2K_train_HR_sub_bicubic
-    dataroot_lq: /mnt/slurm_home/xychen/DF2K/DF2K_train_HR_sub_bicubicLQ
+    dataroot_gt: datasets/DF2K/val_gt
+    dataroot_lq: datasets/DF2K/val_lq2
     io_backend:
       type: disk
 
@@ -25,7 +25,7 @@ datasets:
 
     # data loader
     num_worker_per_gpu: 5
-    batch_size_per_gpu: 24
+    batch_size_per_gpu: 12
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
 
@@ -33,8 +33,8 @@ datasets:
   val:
     name: validation
     type: PairedImageDataset
-    dataroot_gt: /mnt/slurm_home/xychen/DF2K/val_gt
-    dataroot_lq: /mnt/slurm_home/xychen/DF2K/val_lq2
+    dataroot_gt: datasets/DF2K/val_gt
+    dataroot_lq: datasets/DF2K/val_lq2
     io_backend:
       type: disk
   #  div2k 100 val
@@ -45,16 +45,14 @@ network_g:
   # clip_path: /Users/x/Desktop/BasicSR/experiments/pretrained_models/CLIP/RN50.pth
   num_out_ch: 3
   scale: 2
-  pretrained: true
-  lora_r: 16
-  lora_alpha: 16
+  pretrained: false
   # num_clip_features: 4
   # finetune: False
 
 # path
 path:
   pretrain_network_g: ~
-  experiments_root: /mnt/slurm_home/xychen/experiments
+  # experiments_root: /data/xychen/experiments
   # param_key_g: params_ema
   # strict_load_g: False
   # resume_state: experiments/790000.state
@@ -85,7 +83,7 @@ train:
 # Uncomment these for validation
 # validation settings
 val:
-  val_freq: !!float 1e3
+  val_freq: !!float 5e3
   save_img: True
 
   metrics:
@@ -102,7 +100,7 @@ val:
 # logging settings
 logger:
   print_freq: 100
-  save_checkpoint_freq: !!float 1e4
+  save_checkpoint_freq: !!float 5e3
   use_tb_logger: true
   wandb:
     project: ~
@@ -112,4 +110,3 @@ logger:
 dist_params:
   backend: nccl
   port: 29500
-

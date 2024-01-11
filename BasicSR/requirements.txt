@@ -14,3 +14,5 @@ torchvision
 tqdm
 yapf
 lpips
+resize_right
+loralib

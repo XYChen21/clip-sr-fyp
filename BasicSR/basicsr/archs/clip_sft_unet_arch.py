@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torchvision.transforms import Compose, Normalize
+from basicsr.archs.clip_lora_arch import build_model_lora
 from basicsr.archs.clip_arch import build_model
 from basicsr.utils.registry import ARCH_REGISTRY
 from basicsr.utils.upsample import ModulatedStyleConv
@@ -65,25 +66,28 @@ class UpBlock(nn.Module):
 def calculate_parameters(net):
     out = 0
     for name, param in net.named_parameters():
-        if 'clip' in name:
-            continue
-        print(name, param.numel())
-        out += param.numel()
+        if param.requires_grad:
+            print(name, param.numel())
+            out += param.numel()
     return out
 
     
-@ARCH_REGISTRY.register()
+# @ARCH_REGISTRY.register()
 class CLIPSFTUNetGenerator(nn.Module):
-    def __init__(self, num_out_ch=3, scale=4, pretrained=True, finetune=False, num_downsamples=4) -> None:
+    def __init__(self, num_out_ch=3, scale=4, pretrained=True, finetune=False, num_downsamples=4, lora_r=0, lora_alpha=1) -> None:
         super().__init__()
         self.scale = scale
         self.num_downsamples = num_downsamples
-
+        
+        use_lora = True if lora_r > 0 else False
         clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
         # clip_path = '/home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
         with open(clip_path, 'rb') as opened_file:
             model = torch.jit.load(opened_file, map_location="cpu").eval()
-            self.clip = build_model(model.state_dict(), pretrained).visual.float()
+            if use_lora:
+                self.clip = build_model_lora(model.state_dict(), lora_r, lora_alpha).visual.float()
+            else:
+                self.clip = build_model(model.state_dict(), pretrained).visual.float()
 
         self.clip_transform = Compose([
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
@@ -92,7 +96,7 @@ class CLIPSFTUNetGenerator(nn.Module):
             Normalize(mean = (0., 0., 0.), std = (1/0.26862954, 1/0.26130258, 1/0.27577711)),
             Normalize(mean = (-0.48145466, -0.4578275, -0.40821073), std = (1., 1., 1.)),
         ])
-        if pretrained and not finetune:
+        if pretrained and not finetune and not use_lora:
             self.clip.requires_grad_(False)
             self.clip.eval()
 
@@ -145,7 +149,7 @@ class CLIPSFTUNetGenerator(nn.Module):
         #TODO: inverse normalize
         out = self.inv_clip_transform(out)
         return out
-# 42.6M
+# 42.6M -> 59.1M
 # if __name__ == '__main__':
 #     test = CLIPSFTUNetGenerator()
 #     print(calculate_parameters(test))

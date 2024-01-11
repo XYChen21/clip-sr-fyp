@@ -10,7 +10,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true,
+            "justMyCode": false,
             "args": ["-opt","options/train/CLIPUNet/train_clipsftunet_x4plus.yml"]
             // "args": ["-opt","options/train/RealESRNet/train_realesrnet_x4plus.yml"]
         }

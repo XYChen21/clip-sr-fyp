@@ -1,5 +1,5 @@
 # general settings
-name: train_CLIPUNetx4bicubic
+name: train_UNetx4bicubic
 model_type: CLIPUNetModel
 scale: 2
 num_gpu: auto  # auto: can infer from your visible devices automatically. official: 4 GPUs
@@ -41,13 +41,11 @@ datasets:
 
 # network structures
 network_g:
-  type: CLIPSFTUNetGenerator
+  type: UNetGenerator
   # clip_path: /Users/x/Desktop/BasicSR/experiments/pretrained_models/CLIP/RN50.pth
   num_out_ch: 3
   scale: 2
   pretrained: true
-  lora_r: 16
-  lora_alpha: 16
   # num_clip_features: 4
   # finetune: False
 
