@@ -137,7 +137,7 @@ class UNetGenerator(nn.Module):
 
         x = self.lrelu(self.last(x))
         out = self.conv_last(self.lrelu(self.conv_hr(x)))
-        
+        out = out + lq
         return out
 # 34M
 # if __name__ == '__main__':

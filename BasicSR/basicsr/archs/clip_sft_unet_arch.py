@@ -72,7 +72,7 @@ def calculate_parameters(net):
     return out
 
     
-# @ARCH_REGISTRY.register()
+@ARCH_REGISTRY.register()
 class CLIPSFTUNetGenerator(nn.Module):
     def __init__(self, num_out_ch=3, scale=4, pretrained=True, finetune=False, num_downsamples=4, lora_r=0, lora_alpha=1) -> None:
         super().__init__()
@@ -81,7 +81,7 @@ class CLIPSFTUNetGenerator(nn.Module):
         
         use_lora = True if lora_r > 0 else False
         clip_path = '/Users/x/Documents/GitHub/clip-sr-fyp/BasicSR/experiments/pretrained_models/CLIP/RN50.pt'
-        # clip_path = '/home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
+        # clip_path = '/mnt/slurm_home/xychen/basicsr/experiments/pretrained_models/CLIP/RN50.pt'
         with open(clip_path, 'rb') as opened_file:
             model = torch.jit.load(opened_file, map_location="cpu").eval()
             if use_lora:
@@ -92,10 +92,10 @@ class CLIPSFTUNetGenerator(nn.Module):
         self.clip_transform = Compose([
             Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
-        self.inv_clip_transform = Compose([
-            Normalize(mean = (0., 0., 0.), std = (1/0.26862954, 1/0.26130258, 1/0.27577711)),
-            Normalize(mean = (-0.48145466, -0.4578275, -0.40821073), std = (1., 1., 1.)),
-        ])
+        # self.inv_clip_transform = Compose([
+        #     Normalize(mean = (0., 0., 0.), std = (1/0.26862954, 1/0.26130258, 1/0.27577711)),
+        #     Normalize(mean = (-0.48145466, -0.4578275, -0.40821073), std = (1., 1., 1.)),
+        # ])
         if pretrained and not finetune and not use_lora:
             self.clip.requires_grad_(False)
             self.clip.eval()
@@ -124,15 +124,13 @@ class CLIPSFTUNetGenerator(nn.Module):
 
 
     def forward(self, lq):
+        if lq.shape[2] != 224 or lq.shape[3] != 224:
+            fea = F.interpolate(lq, size=224, mode='bicubic')
+        fea = self.clip_transform(fea)
+        latent = self.clip(fea) # B, 1024
+
         lq = F.interpolate(lq, scale_factor=self.scale, mode='bicubic')
-        #TODO: normalize
-        x = self.clip_transform(lq)
-
-        latent = self.clip(x) # B, 1024
-        # num_latents = self.num_downsamples*2*3
-        # latent = latent.unsqueeze(1).repeat(1, num_latents, 1)
-
-        x = self.first(x, latent)
+        x = self.first(lq, latent)
         downsamples = {}
         for i in range(1, self.num_downsamples+1):
             factor = 2**i
@@ -145,9 +143,8 @@ class CLIPSFTUNetGenerator(nn.Module):
 
         x = self.last(x, latent)
         out = self.conv_last(self.lrelu(self.conv_hr(x)))
+        out = out + lq
         
-        #TODO: inverse normalize
-        out = self.inv_clip_transform(out)
         return out
 # 42.6M -> 59.1M
 # if __name__ == '__main__':

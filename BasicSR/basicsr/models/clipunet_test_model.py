@@ -10,7 +10,7 @@ from basicsr.data.transforms import paired_random_crop
 from basicsr.losses import build_loss
 from basicsr.metrics import calculate_metric
 from basicsr.utils import imwrite, tensor2img
-from basicsr.models.sr_model import SRModel
+from basicsr.models.sr_test_model import SRTestModel
 from basicsr.utils import DiffJPEG, USMSharp
 from basicsr.utils.img_process_util import filter2D
 from basicsr.utils.registry import MODEL_REGISTRY
@@ -18,9 +18,9 @@ import lpips
 
 
 @MODEL_REGISTRY.register(suffix='basicsr')
-class CLIPUNetModel(SRModel):
+class CLIPUNetTestModel(SRTestModel):
     def __init__(self, opt):
-        super(CLIPUNetModel, self).__init__(opt)
+        super(CLIPUNetTestModel, self).__init__(opt)
         # originally .cuda()
         self.jpeger = DiffJPEG(differentiable=False).to(self.device)  # simulate JPEG compression artifacts
         self.usm_sharpener = USMSharp().to(self.device)  # do usm sharpening
@@ -168,12 +168,12 @@ class CLIPUNetModel(SRModel):
             self.lq = torch.clamp((out * 255.0).round(), 0, 255) / 255.
 
             # random crop
-            # gt_size = self.opt['gt_size']
-            # self.gt, self.lq = paired_random_crop(self.gt, self.lq, gt_size, self.opt['scale'])
+            gt_size = self.opt['gt_size']
+            self.gt, self.lq = paired_random_crop(self.gt, self.lq, gt_size, self.opt['scale'])
 
             # training pair pool
-            # self._dequeue_and_enqueue()
-            # self.lq = self.lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
+            self._dequeue_and_enqueue()
+            self.lq = self.lq.contiguous()  # for the warning: grad and param do not obey the gradient layout contract
         else:
             # for paired training or validation
             self.lq = data['lq'].to(self.device)

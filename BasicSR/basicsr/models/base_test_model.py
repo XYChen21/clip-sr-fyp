@@ -10,7 +10,7 @@ from basicsr.utils import get_root_logger
 from basicsr.utils.dist_util import master_only
 
 
-class BaseModel():
+class BaseTestModel():
     """Base model."""
 
     def __init__(self, opt):
@@ -67,7 +67,6 @@ class BaseModel():
             if val >= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
                 self.best_metric_results[dataset_name][metric]['iter'] = current_iter
-                # self.save_network(self.net_g, 'net_g', 'best'+metric)
         else:
             if val <= self.best_metric_results[dataset_name][metric]['val']:
                 self.best_metric_results[dataset_name][metric]['val'] = val
